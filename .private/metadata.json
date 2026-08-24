@@ -1,0 +1,49 @@
+{
+  "project": "task242-shipstrata",
+  "title": "船舶沉没遗址层位关系复核台",
+  "generated_at": "2026-08-24",
+  "module": "task242-shipstrata",
+  "go_version": "1.26.3",
+  "sqlite_driver": "modernc.org/sqlite v1.52.0",
+  "requirement": {
+    "id": "REQ-20260823-106",
+    "title": "船舶沉没遗址层位关系复核台",
+    "source": "docs/需求池.md",
+    "status_when_claimed": "已领取",
+    "owner": "workbuddy:task242@go_bugfix"
+  },
+  "qualification_audit": {
+    "禁题筛查": {
+      "passed": true,
+      "note": "核心对象为构件/沉积层/接触关系/采样点，动作序列为导入测绘关系→检查先后约束→标记侵扰/矛盾→裁决层位→发布剖面版本，产物为历史层位证据包。属水下考古地层关系推理，非 OA/任务/工单/可视化/游戏。"
+    },
+    "判问题": {
+      "passed": true,
+      "note": "需求含真实 SQLite 读写闭环与重启恢复，偏序求解+环检测为领域算法，非一眼可改的解。"
+    },
+    "查重复度": {
+      "passed": true,
+      "note": "既有项目 task196-bubblechron(岩芯年轮剖面)、task227-geowell(地热井地质分层)、task175/207-sherdjoin/refit(陶片拼接)均属不同业务域，无「船舶沉没遗址层位关系」重叠。"
+    },
+    "查套模板": {
+      "passed": true,
+      "note": "4 个状态机(遗址批次/地层单元/接触关系/剖面版本)均为领域专有，非通用 CRUD 换皮。"
+    }
+  },
+  "deliverables": {
+    "env_dir": "task0824/task242-shipstrata/env",
+    "go_files": 22,
+    "go_loc_excluding_tests": 2685,
+    "design_doc": "项目设计文档.md",
+    "api_prefix": "/api",
+    "api_count": 28,
+    "smoke_test": "cmd/shipstrata --smoke-test 退出 0"
+  },
+  "gate_results": {
+    "build": "pass",
+    "vet": "pass",
+    "test": "pass",
+    "smoke_test": "pass",
+    "no_git_address": "pass (go.mod 仅含 Go module 依赖路径，无 clone 地址)"
+  }
+}
