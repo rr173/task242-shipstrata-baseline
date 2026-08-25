@@ -1,0 +1,9 @@
+# 运行时产物
+*.db
+*.db-wal
+*.db-shm
+/shipstrata
+/dist/
+# 私有健康验收证据（由 Docker 基线门禁生成，不进入 Agent 可见源码）
+/.private/docker_baseline_validation.json
+/.private/docker_baseline_validation.logs/
