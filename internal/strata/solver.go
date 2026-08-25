@@ -76,7 +76,9 @@ func Solve(contacts []model.Contact) SolveResult {
 				})
 			}
 		} else {
-			res.Status[e.id] = model.ContactStatusPending
+			// 非环边：投影为关系名（overlies/cuts），表示该边在偏序中正常有效。
+			// 不写 pending——pending 是「待确认测绘证据」，不参与偏序，会被误判为失效。
+			res.Status[e.id] = e.rel
 		}
 	}
 	return res

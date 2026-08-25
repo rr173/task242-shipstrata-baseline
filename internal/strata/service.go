@@ -61,14 +61,21 @@ func (s *Service) Reconcile(ctx context.Context, siteID string) (SolveView, erro
 	res := Solve(contacts)
 
 	// 1) 依据求解结果完整投影接触状态，清理已经失效的 conflict 派生标记。
+	//    参与求解的接触只可能是 confirmed 或 conflict（见 ListActiveContacts）：
+	//      - 求解结果仍为 conflict -> 置/保持 conflict；
+	//      - 之前被临时标 conflict、本次不再冲突 -> 恢复为 confirmed（参与偏序的本来状态，
+	//        而非 pending，否则该边会从偏序图中消失）。
 	for _, c := range contacts {
-		if res.Status[c.ID] == model.ContactStatusConflict {
+		switch res.Status[c.ID] {
+		case model.ContactStatusConflict:
 			if err := s.store.UpdateContactStatus(c.ID, model.ContactStatusConflict); err != nil {
 				return SolveView{}, fmt.Errorf("mark conflict: %w", err)
 			}
-		} else if c.Status == model.ContactStatusConflict && res.Status[c.ID] == model.ContactStatusPending {
-			if err := s.store.RestoreContactConfirmation(c.ID); err != nil {
-				return SolveView{}, fmt.Errorf("restore confirmed contact: %w", err)
+		default:
+			if c.Status == model.ContactStatusConflict {
+				if err := s.store.RestoreContactConfirmation(c.ID); err != nil {
+					return SolveView{}, fmt.Errorf("restore confirmed contact: %w", err)
+				}
 			}
 		}
 	}

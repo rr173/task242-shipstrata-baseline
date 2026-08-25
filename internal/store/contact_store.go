@@ -154,10 +154,13 @@ func (s *Store) UpdateContactStatus(id, status string) error {
 }
 
 // RestoreContactConfirmation clears a stale derived conflict after the
-// underlying confirmed edge is no longer part of a cycle.
+// underlying confirmed edge is no longer part of a cycle. It restores the
+// contact to confirmed — the state in which it legitimately participates in
+// the partial order — rather than pending, so the still-valid relation is not
+// silently dropped from the graph.
 func (s *Store) RestoreContactConfirmation(id string) error {
 	_, err := s.DB.Exec(
 		`UPDATE contacts SET status=?, version=version+1, updated_at=? WHERE id=? AND status=?`,
-		model.ContactStatusPending, nowUTC(), id, model.ContactStatusConflict)
+		model.ContactStatusConfirmed, nowUTC(), id, model.ContactStatusConflict)
 	return err
 }
