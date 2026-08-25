@@ -35,12 +35,12 @@ type PublishInput struct {
 
 // Snapshot 剖面快照内容（层位偏序 + 实体状态）。
 type Snapshot struct {
-	Order          map[string]string      `json:"order"`
-	Cycles         [][]string             `json:"cycles"`
+	Order          map[string]string           `json:"order"`
+	Cycles         [][]string                  `json:"cycles"`
 	Contradictions []strata.ContradictionInput `json:"contradictions"`
-	Units          []model.StrataUnit     `json:"units"`
-	Contacts       []model.Contact        `json:"contacts"`
-	GeneratedAt    string                 `json:"generated_at"`
+	Units          []model.StrataUnit          `json:"units"`
+	Contacts       []model.Contact             `json:"contacts"`
+	GeneratedAt    string                      `json:"generated_at"`
 }
 
 // Publish 基于当前偏序求解结果发布一个 draft 剖面版本。
@@ -79,20 +79,15 @@ func (s *Service) Publish(ctx context.Context, siteID string, in PublishInput) (
 	if err != nil {
 		return model.ProfileVersion{}, Snapshot{}, fmt.Errorf("marshal snapshot: %w", err)
 	}
-	ver, err := s.store.NextProfileVersion(siteID)
-	if err != nil {
-		return model.ProfileVersion{}, Snapshot{}, fmt.Errorf("next version: %w", err)
-	}
 	p := model.ProfileVersion{
 		ID:        model.NewID("prf"),
 		SiteID:    siteID,
-		Version:   ver,
 		Status:    model.ProfileStatusDraft,
 		Snapshot:  string(blob),
 		Note:      in.Description,
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := s.store.CreateProfile(&p); err != nil {
+	if err := s.store.CreateNextProfile(&p); err != nil {
 		return model.ProfileVersion{}, Snapshot{}, fmt.Errorf("create profile: %w", err)
 	}
 	return p, snap, nil
@@ -123,31 +118,23 @@ func (s *Service) Freeze(ctx context.Context, id string) (model.ProfileVersion, 
 	if p.Status == model.ProfileStatusFrozen || p.Status == model.ProfileStatusSuperseded {
 		return model.ProfileVersion{}, fmt.Errorf("%w: profile already %s", model.ErrInvalidStatus, p.Status)
 	}
+	if p.Status != model.ProfileStatusShared {
+		return model.ProfileVersion{}, fmt.Errorf("%w: only shared can be frozen", model.ErrInvalidStatus)
+	}
 	if err := s.store.UpdateProfileStatus(id, model.ProfileStatusFrozen, true); err != nil {
 		return model.ProfileVersion{}, fmt.Errorf("freeze profile: %w", err)
 	}
-	p.Status = model.ProfileStatusFrozen
-	return *p, nil
+	frozen, err := s.store.GetProfile(id)
+	if err != nil {
+		return model.ProfileVersion{}, fmt.Errorf("reload frozen profile: %w", err)
+	}
+	return *frozen, nil
 }
 
 // Supersede 用新版本替代旧版本：旧版本标记 superseded。
 func (s *Service) Supersede(ctx context.Context, oldID, newID string) error {
-	oldP, err := s.store.GetProfile(oldID)
-	if err != nil {
-		return fmt.Errorf("get old profile: %w", err)
-	}
-	if oldP.Status == model.ProfileStatusSuperseded {
-		return fmt.Errorf("%w: old profile already superseded", model.ErrInvalidStatus)
-	}
-	newP, err := s.store.GetProfile(newID)
-	if err != nil {
-		return fmt.Errorf("get new profile: %w", err)
-	}
-	if newP.Status != model.ProfileStatusDraft {
-		return fmt.Errorf("%w: new profile must be draft", model.ErrInvalidStatus)
-	}
-	if err := s.store.UpdateProfileStatus(oldID, model.ProfileStatusSuperseded, false); err != nil {
-		return fmt.Errorf("supersede old: %w", err)
+	if err := s.store.SupersedeProfile(oldID, newID); err != nil {
+		return fmt.Errorf("supersede profile: %w", err)
 	}
 	return nil
 }

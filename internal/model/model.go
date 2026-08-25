@@ -61,17 +61,18 @@ const (
 
 // 业务错误
 var (
-	ErrNotFound            = errors.New("entity not found")
-	ErrInvalidArgument     = errors.New("invalid argument")
-	ErrInvalidStatus       = errors.New("invalid status transition")
-	ErrSelfLoop            = errors.New("contact self-loop is not allowed")
-	ErrUnknownUnit         = errors.New("unknown unit referenced by contact")
-	ErrSampleOutOfBounds   = errors.New("sample depth is out of unit depth bounds")
-	ErrFrozenImmutable     = errors.New("frozen profile cannot be modified")
+	ErrNotFound             = errors.New("entity not found")
+	ErrInvalidArgument      = errors.New("invalid argument")
+	ErrInvalidStatus        = errors.New("invalid status transition")
+	ErrSelfLoop             = errors.New("contact self-loop is not allowed")
+	ErrUnknownUnit          = errors.New("unknown unit referenced by contact")
+	ErrSampleOutOfBounds    = errors.New("sample depth is out of unit depth bounds")
+	ErrFrozenImmutable      = errors.New("frozen profile cannot be modified")
 	ErrDuplicateFingerprint = errors.New("duplicate survey edge fingerprint")
-	ErrVersionConflict     = errors.New("version conflict during adjudication")
-	ErrSiteSealed          = errors.New("site is sealed and cannot be modified")
-	ErrInvalidRelation     = errors.New("invalid contact relation type")
+	ErrVersionConflict      = errors.New("version conflict during adjudication")
+	ErrSiteSealed           = errors.New("site is sealed and cannot be modified")
+	ErrInvalidRelation      = errors.New("invalid contact relation type")
+	ErrNoOpenCandidate      = errors.New("no open intrusion candidate for unit")
 )
 
 // SiteBatch 遗址批次
@@ -154,15 +155,26 @@ type Contradiction struct {
 	DetectedAt       time.Time
 }
 
+// ContactParticipates reports whether a contact is eligible for stratigraphic
+// solving. Pending survey evidence must not affect the relation graph.
+func ContactParticipates(status string) bool {
+	return status == ContactStatusConfirmed || status == ContactStatusConflict
+}
+
+// CanSupersedeProfile enforces the immutable profile lifecycle.
+func CanSupersedeProfile(oldStatus, newStatus string) bool {
+	return (oldStatus == ProfileStatusShared || oldStatus == ProfileStatusFrozen) && newStatus == ProfileStatusDraft
+}
+
 // IntrusionCandidate 侵扰候选（疑似后期侵扰层或误连）
 type IntrusionCandidate struct {
-	ID                string
-	SiteID            string
-	UnitID            string
-	Reason            string
+	ID                 string
+	SiteID             string
+	UnitID             string
+	Reason             string
 	SupportingContacts string // JSON []string
-	Status            string
-	CreatedAt         time.Time
+	Status             string
+	CreatedAt          time.Time
 }
 
 // 校验辅助

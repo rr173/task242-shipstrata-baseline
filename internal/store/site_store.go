@@ -54,6 +54,18 @@ func (s *Store) GetSite(id string) (*model.SiteBatch, error) {
 	return scanSiteRow(row)
 }
 
+// EnsureSiteWritable centralizes the lifecycle boundary for evidence writes.
+func (s *Store) EnsureSiteWritable(id string) error {
+	sb, err := s.GetSite(id)
+	if err != nil {
+		return err
+	}
+	if sb.Status == model.SiteStatusSealed {
+		return model.ErrSiteSealed
+	}
+	return nil
+}
+
 func (s *Store) ListSites() ([]model.SiteBatch, error) {
 	rows, err := s.DB.Query(
 		`SELECT id,code,name,location,status,version,created_at,updated_at,sealed_at
@@ -84,4 +96,25 @@ func (s *Store) UpdateSiteStatus(id, status string, sealed bool) error {
 		 WHERE id=?`,
 		status, nowUTC(), sealedAt, id)
 	return err
+}
+
+func (s *Store) AdvanceSiteCAS(id, from, to string, seal bool) error {
+	var sealedAt interface{}
+	if seal {
+		sealedAt = nowUTC()
+	}
+	res, err := s.DB.Exec(
+		`UPDATE site_batches SET status=?, version=version+1, updated_at=?, sealed_at=COALESCE(sealed_at,?) WHERE id=? AND status=?`,
+		to, nowUTC(), sealedAt, id, from)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return model.ErrVersionConflict
+	}
+	return nil
 }

@@ -11,6 +11,16 @@ import (
 	"task242-shipstrata/internal/store"
 )
 
+// ImportInput is one survey edge in an atomic batch import.
+type ImportInput struct {
+	FromUnitID   string
+	ToUnitID     string
+	Relation     string
+	SurveySource string
+	SurveySeq    int
+	Note         string
+}
+
 // Fingerprint 计算测绘边的稳定指纹：单元对 + 关系 + 测绘来源 + 序号。
 func Fingerprint(from, to, rel, source string, seq int) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%s|%d", from, to, rel, source, seq)))
@@ -20,6 +30,9 @@ func Fingerprint(from, to, rel, source string, seq int) string {
 // Import 导入一条接触关系（同一测绘边指纹幂等）。
 // 返回 (inserted bool, contact, error)：若指纹已存在则 inserted=false 且返回已有记录。
 func Import(st *store.Store, siteID, fromUnit, toUnit, rel, source string, seq int, note string) (bool, *model.Contact, error) {
+	if err := st.EnsureSiteWritable(siteID); err != nil {
+		return false, nil, err
+	}
 	if !model.ValidRelation(rel) {
 		return false, nil, model.ErrInvalidRelation
 	}
@@ -70,6 +83,46 @@ func Import(st *store.Store, siteID, fromUnit, toUnit, rel, source string, seq i
 		return false, nil, model.ErrDuplicateFingerprint
 	}
 	return true, c, nil
+}
+
+// ImportBatch validates all survey edges before writing and persists the
+// complete batch in one transaction.
+func ImportBatch(st *store.Store, siteID string, inputs []ImportInput) (int, int, error) {
+	if err := st.EnsureSiteWritable(siteID); err != nil {
+		return 0, 0, err
+	}
+	contacts := make([]*model.Contact, 0, len(inputs))
+	for _, in := range inputs {
+		if !model.ValidRelation(in.Relation) {
+			return 0, 0, model.ErrInvalidRelation
+		}
+		if in.FromUnitID == in.ToUnitID {
+			return 0, 0, model.ErrSelfLoop
+		}
+		for _, uid := range []string{in.FromUnitID, in.ToUnitID} {
+			u, err := st.GetUnit(uid)
+			if err != nil || u.SiteID != siteID {
+				return 0, 0, model.ErrUnknownUnit
+			}
+		}
+		now := time.Now().UTC()
+		contacts = append(contacts, &model.Contact{
+			ID:           model.NewID("ct"),
+			SiteID:       siteID,
+			FromUnitID:   in.FromUnitID,
+			ToUnitID:     in.ToUnitID,
+			Relation:     in.Relation,
+			Status:       model.ContactStatusPending,
+			SurveySource: in.SurveySource,
+			SurveySeq:    in.SurveySeq,
+			Fingerprint:  Fingerprint(in.FromUnitID, in.ToUnitID, in.Relation, in.SurveySource, in.SurveySeq),
+			Note:         in.Note,
+			Version:      1,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		})
+	}
+	return st.CreateContactsBatch(contacts)
 }
 
 // Confirm 将接触关系确认为纳入偏序（pending/conflict → confirmed）。

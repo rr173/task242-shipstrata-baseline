@@ -51,7 +51,7 @@ func StartReview(st *store.Store, id string) (*model.SiteBatch, error) {
 	if !canTransition(sb.Status, model.SiteStatusPendingReview) {
 		return nil, model.ErrInvalidStatus
 	}
-	if err := st.UpdateSiteStatus(id, model.SiteStatusPendingReview, false); err != nil {
+	if err := st.AdvanceSiteCAS(id, model.SiteStatusCollecting, model.SiteStatusPendingReview, false); err != nil {
 		return nil, err
 	}
 	sb.Status = model.SiteStatusPendingReview
@@ -71,7 +71,7 @@ func Publish(st *store.Store, id string) (*model.SiteBatch, error) {
 	if !canTransition(sb.Status, model.SiteStatusPublished) {
 		return nil, model.ErrInvalidStatus
 	}
-	if err := st.UpdateSiteStatus(id, model.SiteStatusPublished, false); err != nil {
+	if err := st.AdvanceSiteCAS(id, model.SiteStatusPendingReview, model.SiteStatusPublished, false); err != nil {
 		return nil, err
 	}
 	sb.Status = model.SiteStatusPublished
@@ -88,7 +88,7 @@ func Seal(st *store.Store, id string) (*model.SiteBatch, error) {
 	if !canTransition(sb.Status, model.SiteStatusSealed) {
 		return nil, model.ErrInvalidStatus
 	}
-	if err := st.UpdateSiteStatus(id, model.SiteStatusSealed, true); err != nil {
+	if err := st.AdvanceSiteCAS(id, model.SiteStatusPublished, model.SiteStatusSealed, true); err != nil {
 		return nil, err
 	}
 	now := time.Now().UTC()
@@ -100,6 +100,9 @@ func Seal(st *store.Store, id string) (*model.SiteBatch, error) {
 
 // CreateUnit 在遗址下创建一个处于 candidate 状态的地层单元（构件 / 沉积层）。
 func CreateUnit(st *store.Store, siteID, label, category string, depthMin, depthMax float64, note string) (*model.StrataUnit, error) {
+	if err := st.EnsureSiteWritable(siteID); err != nil {
+		return nil, err
+	}
 	if category != model.UnitCategorySediment && category != model.UnitCategoryComponent {
 		category = model.UnitCategorySediment
 	}

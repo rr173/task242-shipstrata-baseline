@@ -28,7 +28,7 @@ func (s *Store) ListContradictions(siteID string) ([]model.Contradiction, error)
 		var (
 			id, sid, cu, ic, resolution string
 			resolved                    int
-			detectedAt                 sql.NullString
+			detectedAt                  sql.NullString
 		)
 		if err := rows.Scan(&id, &sid, &cu, &ic, &resolved, &resolution, &detectedAt); err != nil {
 			return nil, err
@@ -49,6 +49,11 @@ func (s *Store) ListContradictions(siteID string) ([]model.Contradiction, error)
 // DeleteUnresolvedContradictions 删除未解决矛盾，供重新求解时刷新。
 func (s *Store) DeleteUnresolvedContradictions(siteID string) error {
 	_, err := s.DB.Exec(`DELETE FROM contradictions WHERE site_id=? AND resolved=0`, siteID)
+	return err
+}
+
+func (s *Store) ResolveContradiction(id, resolution string) error {
+	_, err := s.DB.Exec(`UPDATE contradictions SET resolved=1, resolution=? WHERE id=? AND resolved=0`, resolution, id)
 	return err
 }
 

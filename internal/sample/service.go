@@ -7,6 +7,7 @@ package sample
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"task242-shipstrata/internal/model"
@@ -37,12 +38,18 @@ func (s *Service) Create(ctx context.Context, siteID string, in CreateInput) (mo
 	if in.UnitID == "" || in.Label == "" {
 		return model.SamplePoint{}, fmt.Errorf("%w: unit_id and label required", model.ErrInvalidArgument)
 	}
+	if err := s.store.EnsureSiteWritable(siteID); err != nil {
+		return model.SamplePoint{}, err
+	}
 	u, err := s.store.GetUnit(in.UnitID)
 	if err != nil {
 		return model.SamplePoint{}, fmt.Errorf("get unit: %w", err)
 	}
 	if u.SiteID != siteID {
 		return model.SamplePoint{}, fmt.Errorf("%w: unit does not belong to site", model.ErrUnknownUnit)
+	}
+	if math.IsNaN(in.Depth) || math.IsInf(in.Depth, 0) || in.Depth < u.DepthMin || in.Depth > u.DepthMax {
+		return model.SamplePoint{}, model.ErrSampleOutOfBounds
 	}
 	now := time.Now().UTC()
 	sp := model.SamplePoint{

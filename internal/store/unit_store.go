@@ -51,6 +51,13 @@ func (s *Store) GetUnit(id string) (*model.StrataUnit, error) {
 	return scanUnitRow(row)
 }
 
+func (s *Store) GetUnitForSite(siteID, id string) (*model.StrataUnit, error) {
+	row := s.DB.QueryRow(
+		`SELECT id,site_id,label,category,depth_min,depth_max,status,version,created_at,updated_at
+		 FROM strata_units WHERE site_id=? AND id=?`, siteID, id)
+	return scanUnitRow(row)
+}
+
 func (s *Store) ListUnits(siteID string) ([]model.StrataUnit, error) {
 	rows, err := s.DB.Query(
 		`SELECT id,site_id,label,category,depth_min,depth_max,status,version,created_at,updated_at

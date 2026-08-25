@@ -33,16 +33,58 @@ func (s *Store) ListIntrusionCandidates(siteID string) ([]model.IntrusionCandida
 			return nil, err
 		}
 		out = append(out, model.IntrusionCandidate{
-			ID:                id,
-			SiteID:            sid,
-			UnitID:            uid,
-			Reason:            reason,
+			ID:                 id,
+			SiteID:             sid,
+			UnitID:             uid,
+			Reason:             reason,
 			SupportingContacts: sc,
-			Status:            status,
-			CreatedAt:         mustParse(createdAt.String),
+			Status:             status,
+			CreatedAt:          mustParse(createdAt.String),
 		})
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) GetOpenIntrusionCandidate(siteID, unitID string) (*model.IntrusionCandidate, error) {
+	row := s.DB.QueryRow(
+		`SELECT id,site_id,unit_id,reason,supporting_contacts,status,created_at
+		 FROM intrusion_candidates WHERE site_id=? AND unit_id=? AND status=? ORDER BY created_at LIMIT 1`,
+		siteID, unitID, model.IntrusionOpen)
+	var id, sid, uid, reason, sc, status string
+	var createdAt sql.NullString
+	if err := row.Scan(&id, &sid, &uid, &reason, &sc, &status, &createdAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, model.ErrNoOpenCandidate
+		}
+		return nil, err
+	}
+	return &model.IntrusionCandidate{ID: id, SiteID: sid, UnitID: uid, Reason: reason, SupportingContacts: sc, Status: status, CreatedAt: mustParse(createdAt.String)}, nil
+}
+
+func (s *Store) AdjudicateIntrusion(siteID, unitID, candidateID, unitStatus, candidateStatus string) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	res, err := tx.Exec(`UPDATE strata_units SET status=?, version=version+1, updated_at=? WHERE site_id=? AND id=?`, unitStatus, nowUTC(), siteID, unitID)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		_ = tx.Rollback()
+		return model.ErrVersionConflict
+	}
+	res, err = tx.Exec(`UPDATE intrusion_candidates SET status=? WHERE site_id=? AND id=? AND status=?`, candidateStatus, siteID, candidateID, model.IntrusionOpen)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		_ = tx.Rollback()
+		return model.ErrNoOpenCandidate
+	}
+	return tx.Commit()
 }
 
 // DeleteOpenIntrusionCandidates 删除仍处于 open 的侵扰候选，供重新求解时刷新。

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"task242-shipstrata/internal/model"
@@ -15,6 +16,7 @@ import (
 // Service 层位服务。
 type Service struct {
 	store *store.Store
+	mu    sync.Mutex
 }
 
 // NewService 构造层位服务。
@@ -50,28 +52,57 @@ type SolveView struct {
 // Reconcile 重新求解并持久化：将矛盾接触置为 conflict、写入矛盾记录与侵扰候选。
 // 幂等：先删除未解决矛盾与 open 侵扰候选，再据最新求解结果重建。
 func (s *Service) Reconcile(ctx context.Context, siteID string) (SolveView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	contacts, err := s.store.ListActiveContacts(siteID)
 	if err != nil {
 		return SolveView{}, fmt.Errorf("list active contacts: %w", err)
 	}
 	res := Solve(contacts)
 
-	// 1) 依据求解结果修正接触状态（conflict 标记矛盾边）
-	for cid, st := range res.Status {
-		if st == model.ContactStatusConflict {
-			if err := s.store.UpdateContactStatus(cid, model.ContactStatusConflict); err != nil {
+	// 1) 依据求解结果完整投影接触状态，清理已经失效的 conflict 派生标记。
+	for _, c := range contacts {
+		if res.Status[c.ID] == model.ContactStatusConflict {
+			if err := s.store.UpdateContactStatus(c.ID, model.ContactStatusConflict); err != nil {
 				return SolveView{}, fmt.Errorf("mark conflict: %w", err)
+			}
+		} else if c.Status == model.ContactStatusConflict {
+			if err := s.store.RestoreContactConfirmation(c.ID); err != nil {
+				return SolveView{}, fmt.Errorf("restore confirmed contact: %w", err)
 			}
 		}
 	}
 
-	// 2) 刷新矛盾记录
-	if err := s.store.DeleteUnresolvedContradictions(siteID); err != nil {
-		return SolveView{}, fmt.Errorf("delete contradictions: %w", err)
+	// 2) 保留矛盾审计历史：消失的当前矛盾标记 resolved，仍存在的不要重复插入。
+	existing, err := s.store.ListContradictions(siteID)
+	if err != nil {
+		return SolveView{}, fmt.Errorf("list contradictions: %w", err)
+	}
+	current := make(map[string]bool, len(res.Contradictions))
+	for _, c := range res.Contradictions {
+		cu, _ := json.Marshal(c.CycleUnits)
+		current[string(cu)] = true
+	}
+	for _, old := range existing {
+		if !old.Resolved && !current[old.CycleUnits] {
+			if err := s.store.ResolveContradiction(old.ID, "cycle removed after contact adjudication"); err != nil {
+				return SolveView{}, fmt.Errorf("resolve contradiction: %w", err)
+			}
+		}
 	}
 	for _, c := range res.Contradictions {
 		cu, _ := json.Marshal(c.CycleUnits)
 		ic, _ := json.Marshal(c.InvolvedContacts)
+		duplicate := false
+		for _, old := range existing {
+			if !old.Resolved && old.CycleUnits == string(cu) {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
 		rec := &model.Contradiction{
 			ID:               model.NewID("cd"),
 			SiteID:           siteID,

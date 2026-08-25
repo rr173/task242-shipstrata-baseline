@@ -9,8 +9,8 @@ import (
 func scanSampleRow(rs rowScanner) (*model.SamplePoint, error) {
 	var (
 		id, siteID, unitID, label, material, note, collectedAt string
-		depth                                               float64
-		createdAt                                           sql.NullString
+		depth                                                  float64
+		createdAt                                              sql.NullString
 	)
 	if err := rs.Scan(&id, &siteID, &unitID, &label, &depth, &material, &collectedAt, &note, &createdAt); err != nil {
 		if err == sql.ErrNoRows {

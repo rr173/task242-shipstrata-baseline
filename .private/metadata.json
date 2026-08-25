@@ -30,6 +30,94 @@
       "note": "4 个状态机(遗址批次/地层单元/接触关系/剖面版本)均为领域专有，非通用 CRUD 换皮。"
     }
   },
+  "question_qualification": {
+    "status": "passed",
+    "corpus": "需求池 REQ-001 至 REQ-20260823-107，以及 task196-bubblechron、task227-geowell、task175/207-sherdjoin/refit、task240-fedlineage 等已有需求和项目设计文档",
+    "nearest_three": [
+      {
+        "project": "task196-bubblechron",
+        "difference": "该项目处理岩芯年轮/气泡年代剖面，主关系是时间序列校准；task242 处理船舶遗址构件与沉积层的 overlie/cut 偏序、循环矛盾和侵扰裁决。"
+      },
+      {
+        "project": "task227-geowell",
+        "difference": "该项目处理地热井观测与井段剖面，主实体和状态围绕井次/温压层段；task242 的主实体是遗址单元、接触证据、矛盾记录和剖面版本。"
+      },
+      {
+        "project": "task175/207-sherdjoin/refit",
+        "difference": "这些项目处理陶片物理拼接/拟合，输出是拼接关系或拟合结果；task242 的关键不变量是地层边有向环检测、误连否决和冻结版本审计。"
+      }
+    ],
+    "core_loop_comparison": "导入测绘关系→检查层位先后约束→定位循环矛盾/侵扰候选→研究者裁决→发布冻结剖面；与近邻项目的输入关系、状态转换和发布结果链均不可通过批量改名替换得到。",
+    "state_machine_comparison": "site_batch、strata_unit、contact、profile 四套状态机分别表达遗址生命周期、层位裁决、证据纳入和不可变版本；近邻项目没有相同的四状态协作链。",
+    "algorithm_invariant_comparison": "overlies/cuts 均表示 from 晚于 to，求解器需发现有向环并按环内连接度生成侵扰候选；该不变量与近邻项目的校准、拼接或井段推断不同。",
+    "storage_recovery_comparison": "SQLite 持久化接触指纹、矛盾记录、侵扰候选和 profile snapshot，关闭重开后保留历史裁决；不是近邻项目的时间序列/几何拼接存储语义。",
+    "api_responsibility_comparison": "API 责任集中在 sites/units/contacts/contradictions/intrusion/profiles/samples/graph，围绕考古层位证据闭环；不存在订单、工单、预约、报表或管理后台主操作。",
+    "non_substitutable_difference": "用户要回答的是沉船遗址中某构件属于原始沉没层、后期侵扰层还是测绘误连，并发布可追溯层位证据包；该结论依赖 overlie/cut 偏序和矛盾裁决，不能用近邻项目的领域名词替换得到。"
+  },
+  "cross_project_similarity_audit": {
+    "status": "passed",
+    "candidate": "task0824/task242-shipstrata/env",
+    "comparisons": [
+      {
+        "project": "task0824/task227-geowell",
+        "same": "共享 Go/SQLite/HTTP 基础设施模式",
+        "different": "task227 的领域模型是地热井观测和井段层次；task242 是沉船遗址单元、接触边、循环矛盾和侵扰候选，关键算法与路由职责不同。"
+      },
+      {
+        "project": "task0824/task240-fedlineage",
+        "same": "都有证据归档和版本快照",
+        "different": "task240 围绕数据联邦谱系和来源传播；task242 围绕有向层位偏序、循环检测、误连裁决和封存剖面。"
+      },
+      {
+        "project": "task0824/task196-bubblechron",
+        "same": "都有历史证据与恢复路径",
+        "different": "task196 的核心是年代/校准关系；task242 的核心是考古接触关系及其状态机，无法由改名或替换少量字段得到。"
+      }
+    ],
+    "non_template_reason": "入口、schema、状态机、solver、裁决服务和 API 路径共同表达船舶沉没遗址层位推理；不存在批量改名、同骨架 CRUD 或仅为凑规模的生产模块。"
+  },
+  "requirement_traceability": [
+    {
+      "capability": "遗址批次生命周期与封存",
+      "design_sections": ["项目设计文档.md:3", "项目设计文档.md:13-16"],
+      "source_symbols": ["internal/site/service.go:Create", "internal/site/service.go:StartReview", "internal/site/service.go:Publish", "internal/site/service.go:Seal", "internal/store/site_store.go:AdvanceSiteCAS"],
+      "api": ["POST /api/sites", "POST /api/sites/{id}/advance", "POST /api/sites/{id}/seal"],
+      "persistence": ["site_batches"],
+      "e2e": ["cmd/shipstrata/main.go:runSmoke", "internal/site/service_test.go"]
+    },
+    {
+      "capability": "地层单元、接触关系导入与指纹幂等",
+      "design_sections": ["项目设计文档.md:7-10", "项目设计文档.md:18-20"],
+      "source_symbols": ["internal/site/service.go:CreateUnit", "internal/contact/service.go:Import", "internal/contact/service.go:ImportBatch", "internal/store/contact_store.go:CreateContact", "internal/store/contact_store.go:CreateContactsBatch"],
+      "api": ["POST /api/units", "POST /api/contacts", "POST /api/contacts/batch"],
+      "persistence": ["strata_units", "contacts"],
+      "e2e": ["cmd/shipstrata/main.go:runSmoke", "internal/contact/service_test.go", "internal/store/store_test.go"]
+    },
+    {
+      "capability": "层位偏序、循环矛盾与侵扰候选",
+      "design_sections": ["项目设计文档.md:5-8", "项目设计文档.md:21-23"],
+      "source_symbols": ["internal/strata/solver.go:Solve", "internal/strata/service.go:Reconcile", "internal/intrusion/service.go:Detect", "internal/intrusion/service.go:Adjudicate"],
+      "api": ["GET /api/graph", "GET /api/contradictions", "POST /api/intrusion/detect", "POST /api/intrusion/{unitId}/adjudicate"],
+      "persistence": ["contradictions", "intrusion_candidates", "contacts", "strata_units"],
+      "e2e": ["cmd/shipstrata/main.go:runSmoke", "internal/strata/solver_test.go"]
+    },
+    {
+      "capability": "可追溯剖面快照与冻结版本",
+      "design_sections": ["项目设计文档.md:8-10", "项目设计文档.md:24-26"],
+      "source_symbols": ["internal/profile/service.go:Publish", "internal/profile/service.go:Share", "internal/profile/service.go:Freeze", "internal/profile/service.go:Supersede", "internal/store/profile_store.go:CreateNextProfile", "internal/store/profile_store.go:SupersedeProfile"],
+      "api": ["POST /api/profiles", "POST /api/profiles/{id}/share", "POST /api/profiles/{id}/freeze", "POST /api/profiles/{id}/supersede"],
+      "persistence": ["profile_versions"],
+      "e2e": ["cmd/shipstrata/main.go:runSmoke", "internal/profile/service_test.go"]
+    },
+    {
+      "capability": "采样点证据与重启恢复",
+      "design_sections": ["项目设计文档.md:7-10", "项目设计文档.md:18-20"],
+      "source_symbols": ["internal/sample/service.go:Create", "internal/sample/service.go:List", "internal/store/sample_store.go:CreateSample", "internal/store/store.go:OpenStore"],
+      "api": ["POST /api/samples", "GET /api/samples"],
+      "persistence": ["sample_points"],
+      "e2e": ["cmd/shipstrata/main.go:runSmoke", "internal/sample/service_test.go"]
+    }
+  ],
   "deliverables": {
     "env_dir": "task0824/task242-shipstrata/env",
     "go_files": 22,

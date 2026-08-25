@@ -89,8 +89,11 @@ func (s *Store) Migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_contacts_fp ON contacts(fingerprint)`,
 		`CREATE INDEX IF NOT EXISTS idx_samples_site ON sample_points(site_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_profiles_site ON profile_versions(site_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_profiles_site_version ON profile_versions(site_id,version)`,
 		`CREATE INDEX IF NOT EXISTS idx_contradictions_site ON contradictions(site_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_current_contradictions ON contradictions(site_id,cycle_units) WHERE resolved=0`,
 		`CREATE INDEX IF NOT EXISTS idx_intrusion_site ON intrusion_candidates(site_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_intrusion_open_site_unit ON intrusion_candidates(site_id,unit_id) WHERE status='open'`,
 	}
 	for _, st := range stmts {
 		if _, err := s.DB.Exec(st); err != nil {

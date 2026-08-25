@@ -31,8 +31,8 @@ type ContradictionInput struct {
 
 // IntrusionInput 待写入的侵扰候选。
 type IntrusionInput struct {
-	UnitID            string
-	Reason            string
+	UnitID             string
+	Reason             string
 	SupportingContacts []string
 }
 
@@ -43,7 +43,7 @@ func Solve(contacts []model.Contact) SolveResult {
 	adj := map[string][]string{}
 	var edges []edge
 	for _, c := range contacts {
-		if c.Status == model.ContactStatusExcluded {
+		if !model.ContactParticipates(c.Status) {
 			continue
 		}
 		adj[c.FromUnitID] = append(adj[c.FromUnitID], c.ToUnitID)
@@ -70,8 +70,8 @@ func Solve(contacts []model.Contact) SolveResult {
 				})
 				suspect := mostConnected(cycleNodes, edges)
 				res.Intrusions = append(res.Intrusions, IntrusionInput{
-					UnitID:            suspect,
-					Reason:            fmt.Sprintf("单元 %s 处于不可能循环 %v 中，疑似后期侵扰层或测绘误连", suspect, cycleNodes),
+					UnitID:             suspect,
+					Reason:             fmt.Sprintf("单元 %s 处于不可能循环 %v 中，疑似后期侵扰层或测绘误连", suspect, cycleNodes),
 					SupportingContacts: inCycle,
 				})
 			}

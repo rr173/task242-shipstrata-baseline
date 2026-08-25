@@ -50,42 +50,39 @@ func lastSeg(r *http.Request) string {
 // Router 返回配置好的路由。
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
-	h := func(pattern string, fn func(http.ResponseWriter, *http.Request)) {
-		mux.HandleFunc(pattern, fn)
-	}
 
 	// 遗址批次
-	h("POST /api/sites", s.createSite)
-	h("GET /api/sites", s.listSites)
-	h("GET /api/sites/", s.siteDispatch)
-	h("POST /api/sites/", s.siteDispatch)
+	mux.HandleFunc("POST /api/sites", s.createSite)
+	mux.HandleFunc("GET /api/sites", s.listSites)
+	mux.HandleFunc("GET /api/sites/", s.siteDispatch)
+	mux.HandleFunc("POST /api/sites/", s.siteDispatch)
 	// 单元
-	h("POST /api/units", s.createUnit)
-	h("GET /api/units", s.listUnits)
-	h("GET /api/units/", s.getUnit)
+	mux.HandleFunc("POST /api/units", s.createUnit)
+	mux.HandleFunc("GET /api/units", s.listUnits)
+	mux.HandleFunc("GET /api/units/", s.getUnit)
 	// 接触关系
-	h("POST /api/contacts", s.createContact)
-	h("POST /api/contacts/batch", s.batchContacts)
-	h("GET /api/contacts", s.listContacts)
-	h("GET /api/contacts/", s.contactDispatch)
-	h("POST /api/contacts/", s.contactDispatch)
+	mux.HandleFunc("POST /api/contacts", s.createContact)
+	mux.HandleFunc("POST /api/contacts/batch", s.batchContacts)
+	mux.HandleFunc("GET /api/contacts", s.listContacts)
+	mux.HandleFunc("GET /api/contacts/", s.contactDispatch)
+	mux.HandleFunc("POST /api/contacts/", s.contactDispatch)
 	// 矛盾 / 侵扰
-	h("GET /api/contradictions", s.listContradictions)
-	h("POST /api/intrusion/detect", s.detectIntrusion)
-	h("GET /api/intrusion/candidates", s.listIntrusion)
-	h("POST /api/intrusion/", s.adjudicateIntrusion)
+	mux.HandleFunc("GET /api/contradictions", s.listContradictions)
+	mux.HandleFunc("POST /api/intrusion/detect", s.detectIntrusion)
+	mux.HandleFunc("GET /api/intrusion/candidates", s.listIntrusion)
+	mux.HandleFunc("POST /api/intrusion/", s.adjudicateIntrusion)
 	// 剖面
-	h("POST /api/profiles", s.publishProfile)
-	h("GET /api/profiles", s.listProfiles)
-	h("GET /api/profiles/", s.profileDispatch)
-	h("POST /api/profiles/", s.profileDispatch)
+	mux.HandleFunc("POST /api/profiles", s.publishProfile)
+	mux.HandleFunc("GET /api/profiles", s.listProfiles)
+	mux.HandleFunc("GET /api/profiles/", s.profileDispatch)
+	mux.HandleFunc("POST /api/profiles/", s.profileDispatch)
 	// 采样点
-	h("POST /api/samples", s.createSample)
-	h("GET /api/samples", s.listSamples)
+	mux.HandleFunc("POST /api/samples", s.createSample)
+	mux.HandleFunc("GET /api/samples", s.listSamples)
 	// 图 / 统计 / 自检
-	h("GET /api/graph", s.graph)
-	h("GET /api/stats", s.stats)
-	h("GET /api/self-check", s.selfCheck)
+	mux.HandleFunc("GET /api/graph", s.graph)
+	mux.HandleFunc("GET /api/stats", s.stats)
+	mux.HandleFunc("GET /api/self-check", s.selfCheck)
 
 	return mux
 }
@@ -202,11 +199,11 @@ func (s *Server) createUnit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Label     string  `json:"label"`
-		Category  string  `json:"category"`
-		DepthMin  float64 `json:"depth_min"`
-		DepthMax  float64 `json:"depth_max"`
-		Note      string  `json:"note"`
+		Label    string  `json:"label"`
+		Category string  `json:"category"`
+		DepthMin float64 `json:"depth_min"`
+		DepthMax float64 `json:"depth_max"`
+		Note     string  `json:"note"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -256,12 +253,12 @@ func (s *Server) createContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		FromUnitID  string  `json:"from_unit_id"`
-		ToUnitID    string  `json:"to_unit_id"`
-		Relation    string  `json:"relation"`
+		FromUnitID   string `json:"from_unit_id"`
+		ToUnitID     string `json:"to_unit_id"`
+		Relation     string `json:"relation"`
 		SurveySource string `json:"survey_source"`
-		SurveySeq   int     `json:"survey_seq"`
-		Note        string  `json:"note"`
+		SurveySeq    int    `json:"survey_seq"`
+		Note         string `json:"note"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -283,30 +280,29 @@ func (s *Server) batchContacts(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Contacts []struct {
-			FromUnitID   string  `json:"from_unit_id"`
-			ToUnitID     string  `json:"to_unit_id"`
-			Relation     string  `json:"relation"`
-			SurveySource string  `json:"survey_source"`
-			SurveySeq    int     `json:"survey_seq"`
-			Note         string  `json:"note"`
+			FromUnitID   string `json:"from_unit_id"`
+			ToUnitID     string `json:"to_unit_id"`
+			Relation     string `json:"relation"`
+			SurveySource string `json:"survey_source"`
+			SurveySeq    int    `json:"survey_seq"`
+			Note         string `json:"note"`
 		} `json:"contacts"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	added, skipped := 0, 0
+	inputs := make([]contact.ImportInput, 0, len(in.Contacts))
 	for _, c := range in.Contacts {
-		a, _, err := contact.Import(s.svc.Store, siteID, c.FromUnitID, c.ToUnitID, c.Relation, c.SurveySource, c.SurveySeq, c.Note)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		if a {
-			added++
-		} else {
-			skipped++
-		}
+		inputs = append(inputs, contact.ImportInput{
+			FromUnitID: c.FromUnitID, ToUnitID: c.ToUnitID, Relation: c.Relation,
+			SurveySource: c.SurveySource, SurveySeq: c.SurveySeq, Note: c.Note,
+		})
+	}
+	added, skipped, err := contact.ImportBatch(s.svc.Store, siteID, inputs)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"added": added, "skipped": skipped})
 }
@@ -633,10 +629,10 @@ func (s *Server) selfCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"store":       "ok",
-		"solver":      "ok",
-		"consistent":  consistent,
+		"store":        "ok",
+		"solver":       "ok",
+		"consistent":   consistent,
 		"site_batches": len(sites),
-		"ts":          time.Now().UTC().Format(time.RFC3339),
+		"ts":           time.Now().UTC().Format(time.RFC3339),
 	})
 }
