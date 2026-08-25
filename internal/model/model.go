@@ -156,9 +156,14 @@ type Contradiction struct {
 }
 
 // ContactParticipates reports whether a contact is eligible for stratigraphic
-// solving. Pending survey evidence must not affect the relation graph.
+// solving. Pending survey evidence must not affect the relation graph: only
+// contacts the researcher has confirmed (confirmed), or that have been derived
+// into a conflict from a confirmed edge (conflict), participate in cycle
+// detection. Pending (unconfirmed) and excluded (rejected) contacts are
+// ignored so that freshly imported survey edges cannot by themselves make the
+// graph inconsistent.
 func ContactParticipates(status string) bool {
-	return status != ContactStatusExcluded
+	return status == ContactStatusConfirmed || status == ContactStatusConflict
 }
 
 // CanSupersedeProfile enforces the immutable profile lifecycle.

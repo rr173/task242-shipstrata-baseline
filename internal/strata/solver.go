@@ -36,14 +36,16 @@ type IntrusionInput struct {
 	SupportingContacts []string
 }
 
-// Solve 对所有「非排除」接触关系构建偏序图并检测循环。
+// Solve 对所有「参与偏序求解」的接触关系构建偏序图并检测循环。
+// 参与判定见 model.ContactParticipates：仅 confirmed 与当前矛盾 conflict 接触
+// 构成有向边，pending（待复核测绘关系）不参与，故不会单独让图出现循环。
 // 每条接触关系构成有向边 from→to（上覆 / 切割 均表示 from 晚于 to）。
 func Solve(contacts []model.Contact) SolveResult {
 	res := SolveResult{Status: map[string]string{}}
 	adj := map[string][]string{}
 	var edges []edge
 	for _, c := range contacts {
-		if c.Status == model.ContactStatusExcluded {
+		if !model.ContactParticipates(c.Status) {
 			continue
 		}
 		adj[c.FromUnitID] = append(adj[c.FromUnitID], c.ToUnitID)

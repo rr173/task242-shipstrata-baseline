@@ -127,10 +127,12 @@ func (s *Store) ListContacts(siteID string) ([]model.Contact, error) {
 }
 
 // ListActiveContacts 返回已确认或当前矛盾的接触关系（参与偏序求解）。
+// 待复核（pending）测绘关系不在此列，故不会单独影响层位图的一致性判断。
 func (s *Store) ListActiveContacts(siteID string) ([]model.Contact, error) {
 	rows, err := s.DB.Query(
 		`SELECT id,site_id,from_unit_id,to_unit_id,relation,status,survey_source,survey_seq,fingerprint,note,version,created_at,updated_at
-		 FROM contacts WHERE site_id=? AND status<>? ORDER BY survey_seq`, siteID, model.ContactStatusExcluded)
+		 FROM contacts WHERE site_id=? AND (status=? OR status=?) ORDER BY survey_seq`,
+		siteID, model.ContactStatusConfirmed, model.ContactStatusConflict)
 	if err != nil {
 		return nil, err
 	}
