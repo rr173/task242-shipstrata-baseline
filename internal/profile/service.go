@@ -132,6 +132,9 @@ func (s *Service) Freeze(ctx context.Context, id string) (model.ProfileVersion, 
 }
 
 // Supersede 用新版本替代旧版本：旧版本标记 superseded。
+//
+// 仅当新旧版本属于同一遗址且二者状态合法（旧为 shared/frozen，新为 draft）时才生效；
+// 任一前置校验失败时直接返回错误，存储层不会写入，旧版本状态保持不变。
 func (s *Service) Supersede(ctx context.Context, oldID, newID string) error {
 	oldP, err := s.store.GetProfile(oldID)
 	if err != nil {
@@ -141,8 +144,11 @@ func (s *Service) Supersede(ctx context.Context, oldID, newID string) error {
 	if err != nil {
 		return fmt.Errorf("get new profile: %w", err)
 	}
+	if oldP.SiteID != newP.SiteID {
+		return fmt.Errorf("%w: old site %s != new site %s", model.ErrCrossSite, oldP.SiteID, newP.SiteID)
+	}
 	if !model.CanSupersedeProfile(oldP.Status, newP.Status) {
-		return fmt.Errorf("%w: invalid profile lifecycle", model.ErrInvalidStatus)
+		return fmt.Errorf("%w: invalid profile lifecycle (old=%s new=%s)", model.ErrInvalidStatus, oldP.Status, newP.Status)
 	}
 	if err := s.store.SupersedeProfile(oldID, newID); err != nil {
 		return fmt.Errorf("supersede profile: %w", err)

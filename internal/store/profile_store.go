@@ -115,6 +115,10 @@ func (s *Store) UpdateProfileStatus(id, status string, frozen bool) error {
 	return err
 }
 
+// SupersedeProfile retires oldID (shared/frozen → superseded) in favor of the
+// draft newID within a single transaction. A supersede is only valid when both
+// profiles belong to the same site and are in a legal lifecycle state; on any
+// failure the transaction is rolled back so neither profile's status changes.
 func (s *Store) SupersedeProfile(oldID, newID string) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
@@ -129,11 +133,19 @@ func (s *Store) SupersedeProfile(oldID, newID string) error {
 		_ = tx.Rollback()
 		return model.ErrNotFound
 	}
+	// A profile may only be superseded by a replacement from the same site.
+	if oldSite != newSite {
+		_ = tx.Rollback()
+		return model.ErrCrossSite
+	}
 	if !model.CanSupersedeProfile(oldStatus, newStatus) {
 		_ = tx.Rollback()
 		return model.ErrInvalidStatus
 	}
-	res, err := tx.Exec(`UPDATE profile_versions SET status=? WHERE id=? AND site_id=? AND status IN (?,?)`, model.ProfileStatusSuperseded, oldID, oldSite, model.ProfileStatusShared, model.ProfileStatusFrozen)
+	// Re-check oldStatus under the site guard so a concurrent state change
+	// cannot silently let a draft/superseded version be retired.
+	res, err := tx.Exec(`UPDATE profile_versions SET status=? WHERE id=? AND site_id=? AND status IN (?,?)`,
+		model.ProfileStatusSuperseded, oldID, oldSite, model.ProfileStatusShared, model.ProfileStatusFrozen)
 	if err != nil {
 		_ = tx.Rollback()
 		return err

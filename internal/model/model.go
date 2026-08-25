@@ -73,6 +73,7 @@ var (
 	ErrSiteSealed           = errors.New("site is sealed and cannot be modified")
 	ErrInvalidRelation      = errors.New("invalid contact relation type")
 	ErrNoOpenCandidate      = errors.New("no open intrusion candidate for unit")
+	ErrCrossSite            = errors.New("operation spans multiple sites")
 )
 
 // SiteBatch 遗址批次
@@ -161,9 +162,22 @@ func ContactParticipates(status string) bool {
 	return status == ContactStatusConfirmed || status == ContactStatusConflict
 }
 
-// CanSupersedeProfile enforces the immutable profile lifecycle.
+// CanSupersedeProfile reports whether an existing profile (oldStatus) may be
+// retired in favor of a replacement (newStatus). A supersede is legal only when
+// the old version is shared or frozen (a draft is not yet published and an
+// already-superseded version must not be retired again) and the new version is
+// still a draft (a replacement that has already been shared/frozen is no longer
+// a fresh substitute). The same-site constraint is enforced by the caller, which
+// has both profiles in hand; this helper only reasons about statuses.
 func CanSupersedeProfile(oldStatus, newStatus string) bool {
-	return newStatus == ProfileStatusDraft
+	if newStatus != ProfileStatusDraft {
+		return false
+	}
+	switch oldStatus {
+	case ProfileStatusShared, ProfileStatusFrozen:
+		return true
+	}
+	return false
 }
 
 // IntrusionCandidate 侵扰候选（疑似后期侵扰层或误连）
