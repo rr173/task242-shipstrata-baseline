@@ -45,11 +45,16 @@ func (s *Store) ListIntrusionCandidates(siteID string) ([]model.IntrusionCandida
 	return out, rows.Err()
 }
 
+// GetOpenIntrusionCandidate returns the open intrusion candidate for a unit
+// scoped to a site. The site_id guard enforces the cross-site boundary: an
+// adjudication request under one site can never resolve to a candidate that
+// belongs to another site. Returns ErrNoOpenCandidate when there is no open
+// candidate for (siteID, unitID).
 func (s *Store) GetOpenIntrusionCandidate(siteID, unitID string) (*model.IntrusionCandidate, error) {
 	row := s.DB.QueryRow(
 		`SELECT id,site_id,unit_id,reason,supporting_contacts,status,created_at
-		 FROM intrusion_candidates WHERE unit_id=? AND status=? ORDER BY created_at LIMIT 1`,
-		unitID, model.IntrusionOpen)
+		 FROM intrusion_candidates WHERE site_id=? AND unit_id=? AND status=? ORDER BY created_at LIMIT 1`,
+		siteID, unitID, model.IntrusionOpen)
 	var id, sid, uid, reason, sc, status string
 	var createdAt sql.NullString
 	if err := row.Scan(&id, &sid, &uid, &reason, &sc, &status, &createdAt); err != nil {
@@ -61,12 +66,18 @@ func (s *Store) GetOpenIntrusionCandidate(siteID, unitID string) (*model.Intrusi
 	return &model.IntrusionCandidate{ID: id, SiteID: sid, UnitID: uid, Reason: reason, SupportingContacts: sc, Status: status, CreatedAt: mustParse(createdAt.String)}, nil
 }
 
+// AdjudicateIntrusion atomically applies a verdict to a unit and its open
+// intrusion candidate, both scoped to siteID. The site_id guard on every
+// statement enforces the cross-site boundary: an adjudication request under
+// one site can never mutate a unit or candidate that belongs to another
+// site. When the unit or candidate does not belong to siteID (or no longer
+// has the expected status), the transaction rolls back and no state changes.
 func (s *Store) AdjudicateIntrusion(siteID, unitID, candidateID, unitStatus, candidateStatus string) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
 	}
-	res, err := tx.Exec(`UPDATE strata_units SET status=?, version=version+1, updated_at=? WHERE id=?`, unitStatus, nowUTC(), unitID)
+	res, err := tx.Exec(`UPDATE strata_units SET status=?, version=version+1, updated_at=? WHERE id=? AND site_id=?`, unitStatus, nowUTC(), unitID, siteID)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
@@ -75,7 +86,7 @@ func (s *Store) AdjudicateIntrusion(siteID, unitID, candidateID, unitStatus, can
 		_ = tx.Rollback()
 		return model.ErrVersionConflict
 	}
-	res, err = tx.Exec(`UPDATE intrusion_candidates SET status=? WHERE id=? AND status=?`, candidateStatus, candidateID, model.IntrusionOpen)
+	res, err = tx.Exec(`UPDATE intrusion_candidates SET status=? WHERE id=? AND site_id=? AND status=?`, candidateStatus, candidateID, siteID, model.IntrusionOpen)
 	if err != nil {
 		_ = tx.Rollback()
 		return err

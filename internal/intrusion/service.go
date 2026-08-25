@@ -41,16 +41,24 @@ func (s *Service) List(ctx context.Context, siteID string) ([]model.IntrusionCan
 //   - accepted：确认该单元为后期侵扰层（disturbed），候选置 accepted。
 //   - dismissed：排除该侵扰嫌疑（excluded），候选置 dismissed。
 //
-// 裁决后重新求解，保证层位偏序与候选集合一致。
+// 裁决始终受遗址范围约束：单元与候选必须同属请求的遗址，否则拒绝且不改变
+// 任何状态，避免跨遗址裁决污染另一遗址。裁决后重新求解，保证层位偏序与候选
+// 集合一致。
 func (s *Service) Adjudicate(ctx context.Context, siteID, unitID, verdict string) (model.StrataUnit, error) {
 	if verdict != "accepted" && verdict != "dismissed" {
 		return model.StrataUnit{}, fmt.Errorf("%w: verdict must be accepted or dismissed", model.ErrInvalidArgument)
 	}
-	u, err := s.store.GetUnitForSite("", unitID)
-	if err != nil {
-		return model.StrataUnit{}, fmt.Errorf("get unit: %w", err)
+	// 封存的遗址禁止裁决（与其它证据写入一致）。
+	if err := s.store.EnsureSiteWritable(siteID); err != nil {
+		return model.StrataUnit{}, err
 	}
-	candidate, err := s.store.GetOpenIntrusionCandidate("", unitID)
+	// 单元必须属于请求遗址；跨遗址引用直接拒绝且不触碰状态。
+	u, err := s.store.GetUnitForSite(siteID, unitID)
+	if err != nil {
+		return model.StrataUnit{}, fmt.Errorf("%w: unit does not belong to site", model.ErrUnknownUnit)
+	}
+	// 候选同样受遗址范围约束，避免解析到其它遗址的同 unit_id 候选。
+	candidate, err := s.store.GetOpenIntrusionCandidate(siteID, unitID)
 	if err != nil {
 		return model.StrataUnit{}, fmt.Errorf("get candidate: %w", err)
 	}

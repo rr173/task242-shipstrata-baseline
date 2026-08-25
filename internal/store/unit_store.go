@@ -51,11 +51,19 @@ func (s *Store) GetUnit(id string) (*model.StrataUnit, error) {
 	return scanUnitRow(row)
 }
 
+// GetUnitForSite loads a strata unit scoped to a site. The site_id guard
+// enforces the cross-site boundary: a request under one site can never read
+// or adjudicate a unit that belongs to another site. Returns ErrNotFound
+// when the unit does not exist or does not belong to the given site.
 func (s *Store) GetUnitForSite(siteID, id string) (*model.StrataUnit, error) {
 	row := s.DB.QueryRow(
 		`SELECT id,site_id,label,category,depth_min,depth_max,status,version,created_at,updated_at
-		 FROM strata_units WHERE id=?`, id)
-	return scanUnitRow(row)
+		 FROM strata_units WHERE id=? AND site_id=?`, id, siteID)
+	u, err := scanUnitRow(row)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
 }
 
 func (s *Store) ListUnits(siteID string) ([]model.StrataUnit, error) {
