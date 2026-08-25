@@ -58,10 +58,18 @@ func (s *Store) CreateContact(c *model.Contact) (bool, error) {
 }
 
 // CreateContactsBatch inserts all contacts under one SQLite transaction.
+// On any error the transaction is rolled back, so the batch is all-or-nothing:
+// either every contact is written or none is.
 func (s *Store) CreateContactsBatch(contacts []*model.Contact) (int, int, error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	// 回滚未提交的事务；Commit 后为 no-op。
+	defer func() { _ = tx.Rollback() }()
 	added, skipped := 0, 0
 	for _, c := range contacts {
-		res, execErr := s.DB.Exec(
+		res, execErr := tx.Exec(
 			`INSERT OR IGNORE INTO contacts
 			 (id,site_id,from_unit_id,to_unit_id,relation,status,survey_source,survey_seq,fingerprint,note,version,created_at,updated_at)
 			 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, c.ID, c.SiteID, c.FromUnitID, c.ToUnitID, c.Relation, c.Status, c.SurveySource, c.SurveySeq, c.Fingerprint, c.Note, c.Version,
@@ -78,6 +86,9 @@ func (s *Store) CreateContactsBatch(contacts []*model.Contact) (int, int, error)
 		} else {
 			added++
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
 	}
 	return added, skipped, nil
 }

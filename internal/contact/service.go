@@ -85,22 +85,67 @@ func Import(st *store.Store, siteID, fromUnit, toUnit, rel, source string, seq i
 	return true, c, nil
 }
 
-// ImportBatch validates all survey edges before writing and persists the
-// complete batch in one transaction.
-func ImportBatch(st *store.Store, siteID string, inputs []ImportInput) (int, int, error) {
-	added, skipped := 0, 0
-	for _, in := range inputs {
-		a, _, err := Import(st, siteID, in.FromUnitID, in.ToUnitID, in.Relation, in.SurveySource, in.SurveySeq, in.Note)
+// validateAndBuild runs every write-free validation step for one survey edge
+// and assembles the contact model, without persisting anything. Returning an
+// error here means the whole batch must be rejected so that a partially-valid
+// batch never leaves committed rows behind.
+func validateAndBuild(st *store.Store, siteID string, in ImportInput) (*model.Contact, error) {
+	if err := st.EnsureSiteWritable(siteID); err != nil {
+		return nil, err
+	}
+	if !model.ValidRelation(in.Relation) {
+		return nil, model.ErrInvalidRelation
+	}
+	if in.FromUnitID == in.ToUnitID {
+		return nil, model.ErrSelfLoop
+	}
+	// 校验两端单元存在且属于同一遗址
+	for _, uid := range []string{in.FromUnitID, in.ToUnitID} {
+		u, err := st.GetUnit(uid)
 		if err != nil {
-			return added, skipped, err
+			return nil, model.ErrUnknownUnit
 		}
-		if a {
-			added++
-		} else {
-			skipped++
+		if u.SiteID != siteID {
+			return nil, model.ErrUnknownUnit
 		}
 	}
-	return added, skipped, nil
+	fp := Fingerprint(in.FromUnitID, in.ToUnitID, in.Relation, in.SurveySource, in.SurveySeq)
+	now := time.Now().UTC()
+	return &model.Contact{
+		ID:           model.NewID("ct"),
+		SiteID:       siteID,
+		FromUnitID:   in.FromUnitID,
+		ToUnitID:     in.ToUnitID,
+		Relation:     in.Relation,
+		Status:       model.ContactStatusPending,
+		SurveySource: in.SurveySource,
+		SurveySeq:    in.SurveySeq,
+		Fingerprint:  fp,
+		Note:         in.Note,
+		Version:      1,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}, nil
+}
+
+// ImportBatch validates all survey edges before writing and persists the
+// complete batch in one transaction. If any edge is invalid the batch is
+// rejected wholesale: no rows are committed, so the caller can safely replay
+// the whole batch after correcting the offending edge. Edges whose
+// fingerprint already exists are counted as skipped (idempotent) and do not
+// fail the batch.
+func ImportBatch(st *store.Store, siteID string, inputs []ImportInput) (int, int, error) {
+	// 第一阶段：只校验、不写入。任何一条非法都立即整批失败。
+	built := make([]*model.Contact, 0, len(inputs))
+	for _, in := range inputs {
+		c, err := validateAndBuild(st, siteID, in)
+		if err != nil {
+			return 0, 0, err
+		}
+		built = append(built, c)
+	}
+	// 第二阶段：在一个事务内写入整批。事务保证全写或全不写。
+	return st.CreateContactsBatch(built)
 }
 
 // Confirm 将接触关系确认为纳入偏序（pending/conflict → confirmed）。

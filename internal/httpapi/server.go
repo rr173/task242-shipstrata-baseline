@@ -299,18 +299,10 @@ func (s *Server) batchContacts(w http.ResponseWriter, r *http.Request) {
 			SurveySource: c.SurveySource, SurveySeq: c.SurveySeq, Note: c.Note,
 		})
 	}
-	added, skipped := 0, 0
-	for _, in := range inputs {
-		a, _, err := contact.Import(s.svc.Store, siteID, in.FromUnitID, in.ToUnitID, in.Relation, in.SurveySource, in.SurveySeq, in.Note)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		if a {
-			added++
-		} else {
-			skipped++
-		}
+	added, skipped, err := contact.ImportBatch(s.svc.Store, siteID, inputs)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"added": added, "skipped": skipped})
 }
