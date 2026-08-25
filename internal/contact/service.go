@@ -29,7 +29,11 @@ func Fingerprint(from, to, rel, source string, seq int) string {
 
 // Import 导入一条接触关系（同一测绘边指纹幂等）。
 // 返回 (inserted bool, contact, error)：若指纹已存在则 inserted=false 且返回已有记录。
+// 封存后的遗址禁止新增接触关系；拒绝发生在任何写入之前，保证不留下新增记录。
 func Import(st *store.Store, siteID, fromUnit, toUnit, rel, source string, seq int, note string) (bool, *model.Contact, error) {
+	if err := st.EnsureSiteWritable(siteID); err != nil {
+		return false, nil, err
+	}
 	if !model.ValidRelation(rel) {
 		return false, nil, model.ErrInvalidRelation
 	}

@@ -34,9 +34,13 @@ type CreateInput struct {
 }
 
 // Create 为某地层单元创建一个采样点。
+// 封存后的遗址禁止新增采样点；拒绝发生在写入之前，保证不留下新增记录。
 func (s *Service) Create(ctx context.Context, siteID string, in CreateInput) (model.SamplePoint, error) {
 	if in.UnitID == "" || in.Label == "" {
 		return model.SamplePoint{}, fmt.Errorf("%w: unit_id and label required", model.ErrInvalidArgument)
+	}
+	if err := s.store.EnsureSiteWritable(siteID); err != nil {
+		return model.SamplePoint{}, err
 	}
 	u, err := s.store.GetUnit(in.UnitID)
 	if err != nil {

@@ -99,7 +99,11 @@ func Seal(st *store.Store, id string) (*model.SiteBatch, error) {
 }
 
 // CreateUnit 在遗址下创建一个处于 candidate 状态的地层单元（构件 / 沉积层）。
+// 封存后的遗址禁止新增地层单元。
 func CreateUnit(st *store.Store, siteID, label, category string, depthMin, depthMax float64, note string) (*model.StrataUnit, error) {
+	if err := st.EnsureSiteWritable(siteID); err != nil {
+		return nil, err
+	}
 	if category != model.UnitCategorySediment && category != model.UnitCategoryComponent {
 		category = model.UnitCategorySediment
 	}
