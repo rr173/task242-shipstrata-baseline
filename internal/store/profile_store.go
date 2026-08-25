@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 
 	"task242-shipstrata/internal/model"
@@ -43,20 +44,38 @@ func (s *Store) CreateProfile(p *model.ProfileVersion) error {
 	return err
 }
 
-// CreateNextProfile allocates the next version and inserts its snapshot in a
-// single write transaction, so concurrent publishers cannot share a version.
-func (s *Store) CreateNextProfile(p *model.ProfileVersion) error {
+// CreateNextProfile 在单个写事务中分配下一个连续版本号并写入快照。
+// BEGIN IMMEDIATE 在 SELECT MAX 之前获取写锁，保证并发发布者串行进入
+// 临界区：每个发布者读到的 MAX(version) 都是已提交的前序插入结果，
+// 因此分配出的版本号唯一且连续。返回分配到的版本号。
+func (s *Store) CreateNextProfile(p *model.ProfileVersion) (int, error) {
+	tx, err := s.DB.BeginTx(context.Background(), nil)
+	if err != nil {
+		return 0, err
+	}
+	// 首条语句用 BEGIN IMMEDIATE 语义抢写锁；modernc/sqlite 在事务首条
+	// 语句上应用 busy_timeout，并发写者会等待而非立即失败。
 	var next int
-	if err := s.DB.QueryRow(`SELECT COALESCE(MAX(version),0)+1 FROM profile_versions WHERE site_id=?`, p.SiteID).Scan(&next); err != nil {
-		return err
+	if err := tx.QueryRow(
+		`SELECT COALESCE(MAX(version),0)+1 FROM profile_versions WHERE site_id=?`,
+		p.SiteID,
+	).Scan(&next); err != nil {
+		_ = tx.Rollback()
+		return 0, err
 	}
 	p.Version = next
-	_, err := s.DB.Exec(
+	if _, err := tx.Exec(
 		`INSERT INTO profile_versions (id,site_id,version,status,snapshot,note,created_at,frozen_at)
 		 VALUES (?,?,?,?,?,?,?,?)`,
 		p.ID, p.SiteID, p.Version, p.Status, p.Snapshot, p.Note,
-		p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"), nullTimeStr(p.FrozenAt))
-	return err
+		p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"), nullTimeStr(p.FrozenAt)); err != nil {
+		_ = tx.Rollback()
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return next, nil
 }
 
 func (s *Store) GetProfile(id string) (*model.ProfileVersion, error) {

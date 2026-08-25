@@ -89,6 +89,9 @@ func (s *Store) Migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_contacts_fp ON contacts(fingerprint)`,
 		`CREATE INDEX IF NOT EXISTS idx_samples_site ON sample_points(site_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_profiles_site ON profile_versions(site_id)`,
+		// (site_id,version) 唯一性是版本号唯一连续不变量的数据库级兜底：
+		// 即便分配逻辑出现并发漏洞，重复版本号也会被唯一索引拒绝，避免污染历史。
+		`CREATE UNIQUE INDEX IF NOT EXISTS uq_profile_site_version ON profile_versions(site_id,version)`,
 		`CREATE INDEX IF NOT EXISTS idx_contradictions_site ON contradictions(site_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uq_current_contradictions ON contradictions(site_id,cycle_units) WHERE resolved=0`,
 		`CREATE INDEX IF NOT EXISTS idx_intrusion_site ON intrusion_candidates(site_id)`,

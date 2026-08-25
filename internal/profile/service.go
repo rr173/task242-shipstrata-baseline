@@ -79,22 +79,20 @@ func (s *Service) Publish(ctx context.Context, siteID string, in PublishInput) (
 	if err != nil {
 		return model.ProfileVersion{}, Snapshot{}, fmt.Errorf("marshal snapshot: %w", err)
 	}
-	ver, err := s.store.NextProfileVersion(siteID)
-	if err != nil {
-		return model.ProfileVersion{}, Snapshot{}, fmt.Errorf("next version: %w", err)
-	}
 	p := model.ProfileVersion{
 		ID:        model.NewID("prf"),
 		SiteID:    siteID,
-		Version:   ver,
 		Status:    model.ProfileStatusDraft,
 		Snapshot:  string(blob),
 		Note:      in.Description,
 		CreatedAt: time.Now().UTC(),
 	}
-	if err := s.store.CreateProfile(&p); err != nil {
+	// 版本号在单事务内分配并写入，保证并发发布下唯一且连续。
+	ver, err := s.store.CreateNextProfile(&p)
+	if err != nil {
 		return model.ProfileVersion{}, Snapshot{}, fmt.Errorf("create profile: %w", err)
 	}
+	p.Version = ver
 	return p, snap, nil
 }
 

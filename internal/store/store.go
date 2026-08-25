@@ -15,8 +15,11 @@ type Store struct {
 
 // OpenStore 打开（必要时创建）SQLite 数据库并迁移 schema。
 // dsn 启用外键与忙等待，保证并发写入串行化且不丢数据。
+// _txlock=immediate 让每个写事务以 BEGIN IMMEDIATE 开启，在读取前即获取
+// 写锁：并发发布者会按 busy_timeout 串行进入临界区，避免「读快照→升写锁」
+// 引发的死锁型 SQLITE_BUSY（517），从而保证版本号分配唯一且连续。
 func OpenStore(dbPath string) (*Store, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", dbPath)
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate", dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
